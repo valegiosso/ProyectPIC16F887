@@ -44,10 +44,10 @@ ESPERAR_PRESION:
 
     ; --- Anti-rebote: esperar 20 ms y confirmar ---
     CALL    RETARDO_20MS
-
+    ;Probando nuevos cambios para practicar en git
     ; --- Incrementar contador y actualizar LEDs ---
     INCF    CONTADOR, F         ; CONTADOR = CONTADOR + 1 (wraps 255?0 automáticamente)
-    MOVF    CONTADOR, W         ; W = CONTADOR
+    MOVF    CONTADOR, W         ; W = CONTADOR 
     MOVWF   PORTB               ; Mostrar los 8 bits en los LEDs
 
 ; ============================================================
