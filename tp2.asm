@@ -7,6 +7,8 @@
 ; Fecha:       2026
 ; ============================================================
 
+#include <p16f887.inc>
+	    
 ; --- Definición de variables en RAM (Banco 0) ---
 CONTADOR    equ     0x20        ; Registro de 8 bits: valor del contador (0?255)
 REG_1       equ     0x21        ; Variable auxiliar para el retardo (lazo externo)
