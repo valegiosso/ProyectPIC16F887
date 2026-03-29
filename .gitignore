@@ -1,0 +1,41 @@
+# ============================================================
+# .gitignore para proyecto MPLAB X con ASM (PIC16)
+# ============================================================
+
+# --- Carpetas de build (se regeneran al compilar) ---
+build/
+dist/
+nbproject/private/
+
+# --- Archivos intermedios del ensamblador ---
+*.o
+*.d
+*.p1
+*.pre
+*.lst
+*.map
+*.elf
+*.cof
+*.obj
+
+# --- Archivos de depuración ---
+*.mdb
+*.sym
+
+# --- MPLAB X archivos temporales/locales ---
+*.mplabws
+*.log
+nbproject/Makefile-*.mk
+nbproject/Package-*.bash
+
+# --- Sistema operativo ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================================
+# QUÉ SÍ SE COMMITEA (no ignorar):
+# - *.asm                  → tu código fuente
+# - nbproject/project.xml  → define el PIC y configuración
+# - nbproject/configurations.xml → config bits y opciones
+# ============================================================
