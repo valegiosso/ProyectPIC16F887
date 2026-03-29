@@ -47,7 +47,7 @@ ESPERAR_PRESION:
 
     ; --- Incrementar contador y actualizar LEDs ---
     INCF    CONTADOR, F         ; CONTADOR = CONTADOR + 1 (wraps 255?0 automáticamente)
-    MOVF    CONTADOR, W         ; W = CONTADOR
+    MOVF    CONTADOR, W         ; W = CONTADOR giosso la concha de tu hermana
     MOVWF   PORTB               ; Mostrar los 8 bits en los LEDs
 
 ; ============================================================
