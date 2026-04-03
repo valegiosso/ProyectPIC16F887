@@ -1,93 +1,120 @@
-; ============================================================
-; Trabajo Práctico - Contador de 8 bits con PIC16F886
-; Descripción: Cuenta pulsaciones en RA4 y muestra el valor
-;              en binario natural sobre los 8 LEDs del Puerto B.
-; Cristal:     4 MHz  ?  ciclo de instrucción = 1 µs
-; Autor:       Garbagnoli, Giosso, Verdinelli
-; Fecha:       2026
-; ============================================================
+; =============================================================================
+; contador_8bit.asm
+; Descripcion : Contador de 8 bits con pulsador en RD0 y LEDs en PORTB
+; Micro       : PIC16F887
+; Cristal     : 4 MHz (XT)
+; Reset       : /MCLR (pulsador externo)
+; Compilador  : MPASM (MPLAB X IDE)
+; =============================================================================
 
-#include <p16f887.inc>
-	    
-; --- Definición de variables en RAM (Banco 0) ---
-CONTADOR    equ     0x20        ; Registro de 8 bits: valor del contador (0?255)
-REG_1       equ     0x21        ; Variable auxiliar para el retardo (lazo externo)
-REG_2       equ     0x22        ; Variable auxiliar para el retardo (lazo interno)
+    LIST        P=16F887
+    #INCLUDE    <P16F887.INC>
 
-            ORG     0x00        ; Vector de reset
-            GOTO    SETUP
+; -----------------------------------------------------------------------------
+; BITS DE CONFIGURACION
+; -----------------------------------------------------------------------------
+    __CONFIG    _CONFIG1, _FOSC_XT & _WDTE_OFF & _PWRTE_ON & _MCLRE_ON & _CP_OFF & _CPD_OFF & _BOREN_ON & _IESO_OFF & _FCMEN_OFF & _LVP_OFF
+    __CONFIG    _CONFIG2, _BOR40V & _WRT_OFF
 
-; ============================================================
-; SETUP: Configuración inicial de puertos y registros
-; ============================================================
-SETUP:
-    ; --- Configurar dirección de los pines (Banco 1) ---
-    BANKSEL TRISA
-    BSF     TRISA, 4            ; RA4 como ENTRADA (pulsador)
-    CLRF    TRISB               ; Puerto B completo como SALIDA (8 LEDs)
+; -----------------------------------------------------------------------------
+; VARIABLES EN BANCO 0 (GPR: 0x20 - 0x7F)
+; -----------------------------------------------------------------------------
+    CBLOCK  0x20
+        CONTADOR        ; Valor actual del contador (0-255)
+        TEMP_DEBOUNCE   ; Registro auxiliar para antirebote
+    ENDC
 
-    ; --- Deshabilitar entradas analógicas (Banco 1) ---
-    BANKSEL ANSEL
-    CLRF    ANSEL               ; AN0?AN7 como digitales (incluye RA4/AN3)
-    CLRF    ANSELH              ; AN8?AN11 como digitales
+; Constante para el lazo de antirebote (~20ms a 4MHz)
+DEBOUNCE_COUNT  EQU     0xFF
 
-    ; --- Inicializar puertos y contador (Banco 0) ---
-    BANKSEL PORTB
-    CLRF    PORTB               ; Apagar todos los LEDs al inicio
-    CLRF    CONTADOR            ; Contador comienza en 0
+; =============================================================================
+; VECTOR DE RESET
+; =============================================================================
+    ORG     0x0000
+    GOTO    INICIO
 
-; ============================================================
-; ESPERAR_PRESION: Espera activa hasta detectar flanco
-;                 descendente en RA4 (botón presionado = 0)
-; ============================================================
-ESPERAR_PRESION:
-    BTFSC   PORTA, 4            ; ¿RA4 = 0? (pulsado)
-    GOTO    ESPERAR_PRESION     ; No ? seguir esperando
+; =============================================================================
+; INICIO - CONFIGURACION DE PUERTOS
+; =============================================================================
+    ORG     0x0005
 
-    ; --- Anti-rebote: esperar 20 ms y confirmar ---
-    CALL    RETARDO_20MS
-    ;Probando nuevos cambios para practicar en git
-    ; --- Incrementar contador y actualizar LEDs ---
-    INCF    CONTADOR, F         ; CONTADOR = CONTADOR + 1 (wraps 255?0 automáticamente)
-<<<<<<< HEAD
-    MOVF    CONTADOR, W         ; W = CONTADOR giosso la concha de tu hermana
-=======
-    MOVF    CONTADOR, W         ; W = CONTADOR 
->>>>>>> br2
-    MOVWF   PORTB               ; Mostrar los 8 bits en los LEDs
+INICIO:
+    ; --- Banco 1: configurar direccion de pines ---
+    BSF     STATUS, RP0         ; Seleccionar Banco 1
 
-; ============================================================
-; ESPERAR_SOLTAR: Espera a que el usuario suelte el botón
-;                para evitar contar múltiples veces por
-;                una sola pulsación.
-; ============================================================
+    ; PORTB -> todos como SALIDAS (LEDs)
+    CLRF    TRISB               ; TRISB = 0x00
+
+    ; PORTD -> RD0 como ENTRADA (pulsador), resto salidas
+    MOVLW   0x01
+    MOVWF   TRISD               ; RD0 = entrada, RD1-RD7 = salidas
+
+    ; Deshabilitar conversores A/D en PORTB y PORTD
+    ; ANSEL  controla AN0-AN7  (pines del PORTA y PORTE)
+    ; ANSELH controla AN8-AN13 (pines del PORTB)
+    BSF STATUS, RP1
+    CLRF    ANSEL               ; AN0-AN7 digitales
+    CLRF    ANSELH              ; AN8-AN13 digitales (PORTB digital)
+
+    ; --- Banco 0: inicializar puertos y variables ---
+    BCF     STATUS, RP0
+    BCF	    STATUS, RP1	; Seleccionar Banco 0
+
+    CLRF    PORTB               ; Apagar todos los LEDs
+    CLRF    PORTD               ; Limpiar PORTD
+    CLRF    CONTADOR            ; Iniciar contador en 0
+
+    ; Mostrar valor inicial (0x00) en los LEDs
+    MOVF    CONTADOR, W
+    MOVWF   PORTB
+
+; =============================================================================
+; LOOP PRINCIPAL
+; =============================================================================
+LOOP:
+    ; Leer RD0 (pulsador: activo en bajo, con pull-up externo)
+    BTFSC   PORTD, 0            ; Â¿RD0 = 0? (pulsador presionado)
+    GOTO    LOOP                ; No -> seguir esperando
+
+    ; --- Pulsador detectado: antirebote ---
+    CALL    DEBOUNCE
+
+    ; Verificar nuevamente que sigue presionado (confirmar)
+    BTFSC   PORTD, 0
+    GOTO    LOOP                ; Era ruido, ignorar
+
+    ; --- Incrementar contador ---
+    INCF    CONTADOR, F         ; CONTADOR++ (desbordamiento: 255 -> 0 automatico)
+
+    ; Mostrar nuevo valor en los LEDs
+    MOVF    CONTADOR, W
+    MOVWF   PORTB
+
+    ; --- Esperar a que se suelte el pulsador (evitar multiples conteos) ---
 ESPERAR_SOLTAR:
-    BTFSS   PORTA, 4            ; ¿RA4 = 1? (botón suelto)
-    GOTO    ESPERAR_SOLTAR      ; No ? seguir esperando
+    BTFSS   PORTD, 0            ; Â¿RD0 = 1? (soltado)
+    GOTO    ESPERAR_SOLTAR      ; No -> seguir esperando
 
-    ; --- Anti-rebote al soltar ---
-    CALL    RETARDO_20MS
+    ; Antirebote al soltar
+    CALL    DEBOUNCE
 
-    GOTO    ESPERAR_PRESION     ; Volver al inicio del ciclo
+    GOTO    LOOP                ; Volver al inicio del loop
 
-; ============================================================
-; RETARDO_20MS: Subrutina de retardo de aproximadamente 20 ms
-; Cálculo (cristal 4 MHz ? T_inst = 1 µs):
-;   Lazo interno:  255 iter × 2 ciclos (DECFSZ+GOTO) = 510 µs
-;   + 1 ciclo MOVLW + 1 ciclo MOVWF = 512 µs por vuelta exterior
-;   Lazo externo:   39 iter × 512 µs = 19.968 ms ? 20 ms
-; ============================================================
-RETARDO_20MS:
-    MOVLW   D'39'               ; 39 iteraciones del lazo externo
-    MOVWF   REG_1
-LOOP1:
-    MOVLW   D'255'              ; 255 iteraciones del lazo interno
-    MOVWF   REG_2
-LOOP2:
-    DECFSZ  REG_2, F            ; REG_2-- ; si = 0, salta la sig. instrucción
-    GOTO    LOOP2               ; Seguir lazo interno
-    DECFSZ  REG_1, F            ; REG_1-- ; si = 0, salta la sig. instrucción
-    GOTO    LOOP1               ; Seguir lazo externo
-    RETURN                      ; Retornar al programa principal
+; =============================================================================
+; SUBRUTINA: DEBOUNCE (~20ms a 4MHz)
+; Cada ciclo del lazo interno = 3 instrucciones = 3us
+; 0xFF iteraciones x 3us ~= 765us por pasada del lazo externo
+; Lazo externo x DEBOUNCE_COUNT ~= ~20ms total
+; =============================================================================
+DEBOUNCE:
+    MOVLW   DEBOUNCE_COUNT
+    MOVWF   TEMP_DEBOUNCE
+DEBOUNCE_LOOP:
+    NOP                         ; 1 ciclo
+    NOP                         ; 1 ciclo
+    DECFSZ  TEMP_DEBOUNCE, F    ; 1 ciclo (salta si llega a 0)
+    GOTO    DEBOUNCE_LOOP
+    RETURN
 
-            END
+; =============================================================================
+    END
